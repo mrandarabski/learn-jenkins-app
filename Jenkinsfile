@@ -47,7 +47,7 @@ pipeline {
        }
       agent { docker { image 'node:18-alpine'; reuseNode true; args '-u root' } }
       steps {
-        withCredentials([string(credentialsId: 'netlify-auth-token', variable: 'NETLIFY_AUTH_TOKEN')]) {
+        withCredentials([string(credentialsId: 'netlify-token', variable: 'NETLIFY_AUTH_TOKEN')]) {
           sh '''
             set -eux
             test -d build   # zorg dat de build-map bestaat
