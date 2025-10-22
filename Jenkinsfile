@@ -49,8 +49,8 @@ pipeline {
       steps { 
         sh ''' 
             npm install -g netlify-cli 
-            mode_modules/.bin/netlify --version
-            mode_modules/.bin/netlify status
+            netlify --version
+            netlify status
             touch container-yex.txt
             ls -la
             echo "Deploying to production. Project ID: $NETLIFY_PROJECT_ID"
