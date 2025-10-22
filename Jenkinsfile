@@ -46,14 +46,17 @@ pipeline {
         }
        }
       agent { docker { image 'node:18-alpine'; reuseNode true; args '-u root' } }
-      steps { 
-        sh ''' 
-            npm install -g netlify-cli 
-            netlify --version
-            netlify status
-            touch container-yex.txt
-            ls -la
-            echo "Deploying to production. Project ID: $NETLIFY_PROJECT_ID"
+      steps {
+        withCredentials([string(credentialsId: 'netlify-auth-token', variable: 'NETLIFY_AUTH_TOKEN')]) {
+          sh '''
+            set -eux
+            test -d build   # zorg dat de build-map bestaat
+            npx --yes netlify-cli deploy \
+              --auth "$NETLIFY_AUTH_TOKEN" \
+              --site "$NETLIFY_SITE_ID" \
+              --dir build \
+              --prod \
+              --message "CI ${BUILD_NUMBER}"
           '''
         }
     }
