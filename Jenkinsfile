@@ -59,6 +59,7 @@ pipeline {
               --message "CI ${BUILD_NUMBER}"
           '''
         }
+      }
     }
     stage('Check branch name'){
       steps {
@@ -88,5 +89,4 @@ pipeline {
       cleanWs(deleteDirs: true, disableDeferredWipeout: true)
     }
   }
-}
 }
