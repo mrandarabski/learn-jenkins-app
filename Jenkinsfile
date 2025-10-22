@@ -1,16 +1,5 @@
 pipeline {
-  agent any
-   stages {
-        stage('Test HTML plugin') {
-            steps {
-                publishHTML(target: [
-                    reportDir: 'playwright-report',
-                    reportFiles: 'index.html',
-                    reportName: 'HTML Report'
-                ])
-            }
-        }
-    }  
+  agent any 
   stages {
     stage('Build') {
       agent { docker { image 'node:18-alpine'; reuseNode true } }
@@ -21,6 +10,16 @@ pipeline {
         '''
       }
     }
+
+     stage('Test HTML plugin') {
+            steps {
+                publishHTML(target: [
+                    reportDir: 'playwright-report',
+                    reportFiles: 'index.html',
+                    reportName: 'HTML Report'
+                ])
+            }
+        }
 
     stage('Test') {
       agent { docker { image 'node:18-alpine'; reuseNode true } }
