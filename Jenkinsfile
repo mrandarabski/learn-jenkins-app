@@ -38,11 +38,13 @@ pipeline {
       agent { docker { image 'node:18-alpine'; reuseNode true } }
       steps { sh 'npm install -g netlify-cli && netlify --version' }
     }
-     steps {
-            echo "BRANCH_NAME=${env.BRANCH_NAME}"
-            echo "GIT_BRANCH=${env.GIT_BRANCH}"
-            echo "CHANGE_ID=${env.CHANGE_ID}  CHANGE_TARGET=${env.CHANGE_TARGET}"
-      }
+    stage('Check branch name'){
+      steps {
+              echo "BRANCH_NAME=${env.BRANCH_NAME}"
+              echo "GIT_BRANCH=${env.GIT_BRANCH}"
+              echo "CHANGE_ID=${env.CHANGE_ID}  CHANGE_TARGET=${env.CHANGE_TARGET}"
+        }
+    }
   } // ← sluit 'stages' hier af!
 
   post {
