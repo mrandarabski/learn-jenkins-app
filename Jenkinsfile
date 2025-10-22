@@ -34,7 +34,13 @@ pipeline {
     }
 
     stage('Deploy') {
-      when { branch 'main' }
+      when { 
+        expression {
+          def onMain = (env.BRANCH_NAME ?: '') == 'main' || (env.GIT_BRANCH ?: '') == 'origin/main'
+          def isPRtoMain = (env.CHANGE_TARGET ?: '') == 'main'
+          return onMain || isPRtoMain
+        }
+       }
       agent { docker { image 'node:18-alpine'; reuseNode true; args '-u root' } }
       steps { 
         sh ''' 
