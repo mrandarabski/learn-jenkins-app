@@ -3,6 +3,7 @@ pipeline {
 
   environment {
     NETLIFY_PROJECT_ID = '6d1694b2-f758-486c-8771-b6b0b74e99e1'
+    NETLIFY_AUTH_TOKEN = credentials('netlify-token')
   }
   stages {
     stage('Build') {
@@ -48,7 +49,8 @@ pipeline {
       steps { 
         sh ''' 
             npm install -g netlify-cli 
-            netlify --version
+            mode_modules/.bin/netlify --version
+            mode_modules/.bin/netlify status
             touch container-yex.txt
             ls -la
             echo "Deploying to production. Project ID: $NETLIFY_PROJECT_ID"
