@@ -41,7 +41,7 @@ pipeline {
       when { branch 'main' } // of je eigen logic
       agent { docker { image 'node:18' /* Debian-based met bash */ ; reuseNode true } }
       steps {
-        withCredentials([string(credentialsId: 'netlify-auth-token', variable: 'NETLIFY_AUTH_TOKEN')]) {
+        withCredentials([string(credentialsId: 'netlify-token', variable: 'NETLIFY_AUTH_TOKEN')]) {
           sh '''
             set -eux
             test -d build  # build/ moet al bestaan uit eerdere stage
