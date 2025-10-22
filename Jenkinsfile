@@ -35,8 +35,15 @@ pipeline {
 
     stage('Deploy') {
       when { branch 'main' }
-      agent { docker { image 'node:18-alpine'; reuseNode true } }
-      steps { sh 'npm install -g netlify-cli && netlify --version' }
+      agent { docker { image 'node:18-alpine'; reuseNode true; args '-u root' } }
+      steps { 
+        sh ''' 
+            npm install -g netlify-cli 
+            netlify --version
+            touch container-yex.txt
+            ls -la
+          '''
+        }
     }
     stage('Check branch name'){
       steps {
