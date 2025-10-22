@@ -38,19 +38,13 @@ pipeline {
     }
 
     stage('Deploy') {
-      when { 
-        expression {
-          def onMain = (env.BRANCH_NAME ?: '') == 'main' || (env.GIT_BRANCH ?: '') == 'origin/main'
-          def isPRtoMain = (env.CHANGE_TARGET ?: '') == 'main'
-          return onMain || isPRtoMain
-        }
-       }
-      agent { docker { image 'node:18-alpine'; reuseNode true; args '-u root' } }
+      when { branch 'main' } // of je eigen logic
+      agent { docker { image 'node:18' /* Debian-based met bash */ ; reuseNode true } }
       steps {
-        withCredentials([string(credentialsId: 'netlify-token', variable: 'NETLIFY_AUTH_TOKEN')]) {
+        withCredentials([string(credentialsId: 'netlify-auth-token', variable: 'NETLIFY_AUTH_TOKEN')]) {
           sh '''
             set -eux
-            test -d build   # zorg dat de build-map bestaat
+            test -d build  # build/ moet al bestaan uit eerdere stage
             npx --yes netlify-cli deploy \
               --auth "$NETLIFY_AUTH_TOKEN" \
               --site "$NETLIFY_PROJECT_ID" \
@@ -61,6 +55,7 @@ pipeline {
         }
       }
     }
+
     stage('Check branch name'){
       steps {
               echo "BRANCH_NAME=${env.BRANCH_NAME}"
