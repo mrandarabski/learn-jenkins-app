@@ -53,7 +53,7 @@ pipeline {
             test -d build   # zorg dat de build-map bestaat
             npx --yes netlify-cli deploy \
               --auth "$NETLIFY_AUTH_TOKEN" \
-              --site "$NETLIFY_SITE_ID" \
+              --site "$NETLIFY_PROJECT_ID" \
               --dir build \
               --prod \
               --message "CI ${BUILD_NUMBER}"
