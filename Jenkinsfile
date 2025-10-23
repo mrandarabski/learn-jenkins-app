@@ -24,6 +24,7 @@ pipeline {
           image 'node:18-alpine'     // lichtgewicht Node-image
           reuseNode true             // hergebruik dezelfde Jenkins-node
           args "-u ${JENKINS_UID}:${JENKINS_GID}" // voorkom root-owned bestanden
+          // het werkt nog niet
         }
       }
       steps {
