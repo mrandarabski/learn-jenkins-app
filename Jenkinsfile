@@ -118,69 +118,66 @@ pipeline {
     }
     // ---------- STAGE 5: Netlify diagnostics ----------
     stage('Netlify diagnostics') {
-      // 🔹 Deze 'when' bepaalt of de Deploy-stage wordt uitgevoerd
+      // Draai dit alleen wanneer we op 'origin/main' zitten in een klassieke (niet-multibranch) job
       when {
-        anyOf {
-          branch 'main'                               // Als de branch 'main' is
-          expression { env.CHANGE_TARGET == 'main' }  // Of als het een PR is naar 'main'
-        }
+        expression { (env.GIT_BRANCH ?: '') == 'origin/main' }
       }
+
       agent {
         docker {
-          image 'node:18'       // Debian-based, bevat bash + npx
+          image 'node:18'                       // Debian-based: heeft bash + npx
           reuseNode true
-          args "-u ${JENKINS_UID}:${JENKINS_GID}"  // voorkom root-owned files
+          args "-u ${JENKINS_UID}:${JENKINS_GID}" // voorkom root-owned files
         }
       }
-      environment { NETLIFY_LOG = 'debug' }  // extra logging van Netlify CLI
+
+      // Extra logging vanuit de Netlify CLI
+      environment { NETLIFY_LOG = 'debug' }
+
       steps {
         withCredentials([string(credentialsId: 'netlify-token', variable: 'NETLIFY_AUTH_TOKEN')]) {
           sh '''
-            set -eux
-            npm install -g netlify-cli
+            set -euxo pipefail
+
             echo "Netlify CLI version:"
             npx --yes netlify --version
-              npx --yes netlify deploy \
-          --auth "$NETLIFY_AUTH_TOKEN" \
-          --site "$NETLIFY_PROJECT_ID" \
-          --dir build \
-          --prod \
-          --message "CI ${BUILD_NUMBER}"
-          '''
-            /* echo "Token present? (masked length):"
-            [ -n "$NETLIFY_AUTH_TOKEN" ] && echo "NETLIFY_AUTH_TOKEN set (len=${#NETLIFY_AUTH_TOKEN})" || echo "MISSING TOKEN"
 
-            echo "List sites available to this token (first 10 lines):"
-            npx --yes netlify sites:list --json --auth "$NETLIFY_AUTH_TOKEN" | head -n 10 || true
+            echo "Token aanwezig? (gemaskeerd: alleen lengte)"
+            [ -n "$NETLIFY_AUTH_TOKEN" ] && echo "NETLIFY_AUTH_TOKEN len=${#NETLIFY_AUTH_TOKEN}" || (echo "MISSING TOKEN" && exit 1)
 
-            echo "Check that our site id is visible in the list:"
+            echo "Sites beschikbaar voor dit token (eerste regels):"
+            npx --yes netlify sites:list --json --auth "$NETLIFY_AUTH_TOKEN" | head -n 20 || true
+
+            echo "Controleer of onze SITE_ID in de lijst voorkomt:"
             npx --yes netlify sites:list --json --auth "$NETLIFY_AUTH_TOKEN" | grep -n "\"id\": \"${NETLIFY_PROJECT_ID}\"" || true
 
-            echo "Environment variables for the site (requires token + site):"
-            npx --yes netlify env:list --auth "$NETLIFY_AUTH_TOKEN" --site "$NETLIFY_PROJECT_ID" || true */
-          
+            echo "Site environment variables (indien rechten):"
+            npx --yes netlify env:list --auth "$NETLIFY_AUTH_TOKEN" --site "$NETLIFY_PROJECT_ID" || true
+
+            # Optioneel: tijdelijke link om 'netlify status' te tonen, daarna weer opruimen
+            npx --yes netlify link --id "$NETLIFY_PROJECT_ID"
+            NETLIFY_AUTH_TOKEN="$NETLIFY_AUTH_TOKEN" npx --yes netlify status || true
+            rm -rf .netlify || true
+          '''
         }
       }
     }
 
+
     // ---------- STAGE 6: Deploy ----------
     stage('Deploy') {
       when {
-        branch 'main' // alleen deployen op main branch
+        expression { (env.GIT_BRANCH ?: '') == 'origin/main' }
       }
       agent {
-        docker {
-          image 'node:18' // Debian-based image (bevat bash)
-          reuseNode true
-          args "-u ${JENKINS_UID}:${JENKINS_GID}"
-        }
+        docker { image 'node:18'; reuseNode true; args "-u ${JENKINS_UID}:${JENKINS_GID}" }
       }
       steps {
         withCredentials([string(credentialsId: 'netlify-token', variable: 'NETLIFY_AUTH_TOKEN')]) {
           sh '''
-            set -eux
-            test -d build || { echo "❌ Build-map ontbreekt"; exit 1; }
-            npx --yes netlify-cli deploy \
+            set -euxo pipefail
+            test -d build
+            npx --yes netlify deploy \
               --auth "$NETLIFY_AUTH_TOKEN" \
               --site "$NETLIFY_PROJECT_ID" \
               --dir build \
@@ -190,6 +187,7 @@ pipeline {
         }
       }
     }
+
 
     // ---------- STAGE 7: Branch Info ----------
     stage('Check Branch Info') {
