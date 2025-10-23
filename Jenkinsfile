@@ -42,7 +42,7 @@ pipeline {
         docker {
           image 'node:18-alpine'
           reuseNode true
-          args "-u $(id -u):$(id -g)"
+          args "-u ${JENKINS_UID}:${JENKINS_GID}"
         }
       }
       steps {
@@ -65,7 +65,7 @@ pipeline {
         docker {
           image 'mcr.microsoft.com/playwright:v1.39.0-jammy'
           reuseNode true
-          args "-u $(id -u):$(id -g)"
+          args "-u ${JENKINS_UID}:${JENKINS_GID}"
         }
       }
       steps {
@@ -125,7 +125,7 @@ pipeline {
         docker {
           image 'node:18' // Debian-based image (bevat bash)
           reuseNode true
-          args "-u $(id -u):$(id -g)"
+          args "-u ${JENKINS_UID}:${JENKINS_GID}"
         }
       }
       steps {
