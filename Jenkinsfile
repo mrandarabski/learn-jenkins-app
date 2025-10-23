@@ -7,6 +7,7 @@ pipeline {
 
   // ---------- Omgevingsvariabelen ----------
   environment {
+    NETLIFY_LOG = 'debug'
     // ID van je Netlify-site (vind je in je Netlify dashboard)
     NETLIFY_PROJECT_ID = '6d1694b2-f758-486c-8771-b6b0b74e99e1'
     // Jenkins-credential die je in Credentials hebt aangemaakt
@@ -115,8 +116,33 @@ pipeline {
         archiveArtifacts allowEmptyArchive: true, artifacts: 'playwright-report/**'
       }
     }
+    // ---------- STAGE 5: Netlify diagnostics ----------
+    stage('Netlify diagnostics') {
+      steps {
+        withCredentials([string(credentialsId: 'netlify-token', variable: 'NETLIFY_AUTH_TOKEN')]) {
+          sh '''
+            set -eux
 
-    // ---------- STAGE 5: Deploy ----------
+            echo "Netlify CLI version:"
+            npx --yes netlify --version
+
+            echo "Token present? (masked length):"
+            [ -n "$NETLIFY_AUTH_TOKEN" ] && echo "NETLIFY_AUTH_TOKEN set (len=${#NETLIFY_AUTH_TOKEN})" || echo "MISSING TOKEN"
+
+            echo "List sites available to this token (first 10 lines):"
+            npx --yes netlify sites:list --json --auth "$NETLIFY_AUTH_TOKEN" | head -n 10 || true
+
+            echo "Check that our site id is visible in the list:"
+            npx --yes netlify sites:list --json --auth "$NETLIFY_AUTH_TOKEN" | grep -n "\"id\": \"${NETLIFY_PROJECT_ID}\"" || true
+
+            echo "Environment variables for the site (requires token + site):"
+            npx --yes netlify env:list --auth "$NETLIFY_AUTH_TOKEN" --site "$NETLIFY_PROJECT_ID" || true
+          '''
+        }
+      }
+    }
+
+    // ---------- STAGE 6: Deploy ----------
     stage('Deploy') {
       when {
         branch 'main' // alleen deployen op main branch
@@ -144,7 +170,7 @@ pipeline {
       }
     }
 
-    // ---------- STAGE 6: Branch Info ----------
+    // ---------- STAGE 7: Branch Info ----------
     stage('Check Branch Info') {
       steps {
         echo "BRANCH_NAME=${env.BRANCH_NAME}"
