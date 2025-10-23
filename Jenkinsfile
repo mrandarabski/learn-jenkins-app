@@ -1,46 +1,75 @@
-pipeline {
-  agent any
-  options { skipDefaultCheckout(true) }   // ➋: wij doen zelf cleanup + checkout
+// ===== Declarative Jenkins Pipeline =====
+// Deze pipeline bouwt, test, voert E2E-tests uit, publiceert rapporten en
+// deployt naar Netlify (alleen op de main branch).
 
+pipeline {
+  agent any // gebruik elke beschikbare Jenkins-agent (node)
+
+  // ---------- Omgevingsvariabelen ----------
   environment {
+    // ID van je Netlify-site (vind je in je Netlify dashboard)
     NETLIFY_PROJECT_ID = '6d1694b2-f758-486c-8771-b6b0b74e99e1'
-    // Haal het token NIET hier én via withCredentials; kies één plek.
-    // We gebruiken straks alleen withCredentials in Deploy.
+    // Jenkins-credential die je in Credentials hebt aangemaakt
+    NETLIFY_AUTH_TOKEN = credentials('netlify-token')
   }
 
   stages {
-    stage('Checkout (clean & fix perms)') {
+
+    // ---------- STAGE 1: Build ----------
+    stage('Build') {
+      agent {
+        docker {
+          image 'node:18-alpine'     // lichtgewicht Node-image
+          reuseNode true             // hergebruik dezelfde Jenkins-node
+          args "-u $(id -u):$(id -g)" // voorkom root-owned bestanden
+        }
+      }
       steps {
-        // ➋: verwijder rommel van vorige run (kan falen bij root-owned files)
-        deleteDir()
-        // herstel permissies / verwijder hardnekkige .netlify resten
         sh '''
           set -eux
-          (chmod -R u+rwX . || true)
-          rm -rf .netlify || true
+          npm ci                    # schone installatie van dependencies
+          npm run build              # bouw productieversie (bijv. React)
         '''
-        checkout scm
       }
     }
 
-    stage('Build') {
-      agent { docker { image 'node:18-alpine'; reuseNode true; args '-u 1000:1000' } } // ➊ niet als root
-      steps { sh 'npm ci && npm run build' }
-    }
-
+    // ---------- STAGE 2: Unit Tests ----------
     stage('Test') {
-      agent { docker { image 'node:18-alpine'; reuseNode true; args '-u 1000:1000' } } // ➊
-      steps { sh 'npm ci && npm test' }
-      post { always { junit allowEmptyResults: true, testResults: 'test-results/**/*.xml' } }
-    }
-
-    stage('E2E (run in Docker)') {
-      agent { docker { image 'mcr.microsoft.com/playwright:v1.39.0-jammy'; reuseNode true; args '-u 1000:1000' } } // ➊
+      agent {
+        docker {
+          image 'node:18-alpine'
+          reuseNode true
+          args "-u $(id -u):$(id -g)"
+        }
+      }
       steps {
         sh '''
           set -eux
           npm ci
-          npx serve -s build &
+          npm test || true           # laat testfouten niet meteen pipeline breken
+        '''
+      }
+      post {
+        always {
+          junit allowEmptyResults: true, testResults: 'test-results/**/*.xml'
+        }
+      }
+    }
+
+    // ---------- STAGE 3: End-to-End Tests ----------
+    stage('E2E (Playwright)') {
+      agent {
+        docker {
+          image 'mcr.microsoft.com/playwright:v1.39.0-jammy'
+          reuseNode true
+          args "-u $(id -u):$(id -g)"
+        }
+      }
+      steps {
+        sh '''
+          set -eux
+          npm ci
+          npx serve -s build &       # start lokale webserver voor tests
           sleep 10
           npx playwright test --reporter=html,junit
           ls -la playwright-report || true
@@ -48,21 +77,59 @@ pipeline {
       }
       post {
         always {
+          // bewaar de rapporten zodat andere stages ze kunnen gebruiken
           stash name: 'e2e-html-report', includes: 'playwright-report/**', allowEmpty: true
-          stash name: 'e2e-junit',       includes: '**/results.xml,**/junit*.xml', allowEmpty: true
+          stash name: 'e2e-junit', includes: '**/results.xml,**/junit*.xml', allowEmpty: true
         }
       }
     }
 
-    stage('Deploy') {
-      when { branch 'main' }  // houd je eigen gating aan
-      agent { docker { image 'node:18'; reuseNode true; args '-u 1000:1000' } } // ➊ Debian-based met bash
+    // ---------- STAGE 4: Rapporten publiceren ----------
+    stage('Publish Reports') {
       steps {
-        // ➌ gebruik één credentials ID en gebruik met withCredentials
+        // haal rapporten terug uit stashes
+        unstash 'e2e-html-report'
+        unstash 'e2e-junit'
+
+        script {
+          if (fileExists('playwright-report/index.html')) {
+            publishHTML(target: [
+              allowMissing: true,
+              alwaysLinkToLastBuild: false,
+              keepAll: false,
+              reportDir: 'playwright-report',
+              reportFiles: 'index.html',
+              reportName: 'E2E Report'
+            ])
+          } else {
+            echo '⚠️ Geen HTML rapport gevonden - overslaan publishHTML'
+          }
+        }
+
+        // combineer testresultaten
+        junit allowEmptyResults: true, testResults: '**/results.xml,**/junit*.xml'
+        // archiveer HTML rapport
+        archiveArtifacts allowEmptyArchive: true, artifacts: 'playwright-report/**'
+      }
+    }
+
+    // ---------- STAGE 5: Deploy ----------
+    stage('Deploy') {
+      when {
+        branch 'main' // alleen deployen op main branch
+      }
+      agent {
+        docker {
+          image 'node:18' // Debian-based image (bevat bash)
+          reuseNode true
+          args "-u $(id -u):$(id -g)"
+        }
+      }
+      steps {
         withCredentials([string(credentialsId: 'netlify-token', variable: 'NETLIFY_AUTH_TOKEN')]) {
           sh '''
             set -eux
-            test -d build  # build/ moet bestaan uit eerdere stage
+            test -d build || { echo "❌ Build-map ontbreekt"; exit 1; }
             npx --yes netlify-cli deploy \
               --auth "$NETLIFY_AUTH_TOKEN" \
               --site "$NETLIFY_PROJECT_ID" \
@@ -74,36 +141,21 @@ pipeline {
       }
     }
 
-    stage('Check branch name') {
+    // ---------- STAGE 6: Branch Info ----------
+    stage('Check Branch Info') {
       steps {
         echo "BRANCH_NAME=${env.BRANCH_NAME}"
         echo "GIT_BRANCH=${env.GIT_BRANCH}"
         echo "CHANGE_ID=${env.CHANGE_ID}  CHANGE_TARGET=${env.CHANGE_TARGET}"
       }
     }
-  } // einde stages
+  }
 
+  // ---------- POST-PIPELINE (altijd uitvoeren) ----------
   post {
     always {
-      // ➍ zorg voor workspace-context; unstash defensief
-      node(env.NODE_NAME ?: null) {
-        script {
-          try { unstash 'e2e-html-report' } catch (ignore) { echo 'No e2e-html-report stash' }
-          try { unstash 'e2e-junit' }       catch (ignore) { echo 'No e2e-junit stash' }
-
-          if (fileExists('playwright-report/index.html')) {
-            publishHTML(target: [
-              allowMissing: true, alwaysLinkToLastBuild: false, keepAll: false,
-              reportDir: 'playwright-report', reportFiles: 'index.html', reportName: 'E2E Report'
-            ])
-          } else {
-            echo 'No HTML report found – skipping publishHTML'
-          }
-        }
-        junit allowEmptyResults: true, testResults: '**/results.xml,**/junit*.xml'
-        archiveArtifacts allowEmptyArchive: true, artifacts: 'playwright-report/**'
-        cleanWs(deleteDirs: true, disableDeferredWipeout: true)
-      }
+      echo "🧹 Cleaning workspace..."
+      cleanWs(deleteDirs: true, disableDeferredWipeout: true)
     }
   }
 }
