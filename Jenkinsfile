@@ -118,60 +118,52 @@ pipeline {
     }
     // ---------- STAGE 5: Netlify diagnostics ----------
     stage('Netlify diagnostics') {
-      // Draai dit alleen wanneer we op 'origin/main' zitten in een klassieke (niet-multibranch) job
-      when {
-        expression { (env.GIT_BRANCH ?: '') == 'origin/main' }
-      }
-
-      agent {
-        docker {
-          image 'node:18'                       // Debian-based: heeft bash + npx
-          reuseNode true
-          args "-u ${JENKINS_UID}:${JENKINS_GID}" // voorkom root-owned files
-        }
-      }
-
-      // Extra logging vanuit de Netlify CLI
-      environment { NETLIFY_LOG = 'debug' }
-
-      steps {
-        withCredentials([string(credentialsId: 'netlify-token', variable: 'NETLIFY_AUTH_TOKEN')]) {
-          sh '''
-            set -euxo pipefail
-
-            echo "Netlify CLI version:"
-            npx --yes netlify --version
-
-            echo "Token aanwezig? (gemaskeerd: alleen lengte)"
-            [ -n "$NETLIFY_AUTH_TOKEN" ] && echo "NETLIFY_AUTH_TOKEN len=${#NETLIFY_AUTH_TOKEN}" || (echo "MISSING TOKEN" && exit 1)
-
-            echo "Sites beschikbaar voor dit token (eerste regels):"
-            npx --yes netlify sites:list --json --auth "$NETLIFY_AUTH_TOKEN" | head -n 20 || true
-
-            echo "Controleer of onze SITE_ID in de lijst voorkomt:"
-            npx --yes netlify sites:list --json --auth "$NETLIFY_AUTH_TOKEN" | grep -n "\"id\": \"${NETLIFY_PROJECT_ID}\"" || true
-
-            echo "Site environment variables (indien rechten):"
-            npx --yes netlify env:list --auth "$NETLIFY_AUTH_TOKEN" --site "$NETLIFY_PROJECT_ID" || true
-
-            # Optioneel: tijdelijke link om 'netlify status' te tonen, daarna weer opruimen
-            npx --yes netlify link --id "$NETLIFY_PROJECT_ID"
-            NETLIFY_AUTH_TOKEN="$NETLIFY_AUTH_TOKEN" npx --yes netlify status || true
-            rm -rf .netlify || true
-          '''
-        }
-      }
-    }
-
-
-    // ---------- STAGE 6: Deploy ----------
-    stage('Deploy') {
       when {
         expression { (env.GIT_BRANCH ?: '') == 'origin/main' }
       }
       agent {
         docker { image 'node:18'; reuseNode true; args "-u ${JENKINS_UID}:${JENKINS_GID}" }
       }
+      environment { NETLIFY_LOG = 'debug' }
+
+      steps {
+        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+          withCredentials([string(credentialsId: 'netlify-token', variable: 'NETLIFY_AUTH_TOKEN')]) {
+            sh '''
+              set -euxo pipefail
+              npx --yes netlify --version
+              npx --yes netlify sites:list --json --auth "$NETLIFY_AUTH_TOKEN" | head -n 20 || true
+              npx --yes netlify link --id "$NETLIFY_PROJECT_ID"
+              NETLIFY_AUTH_TOKEN="$NETLIFY_AUTH_TOKEN" npx --yes netlify status || true
+              rm -rf .netlify || true
+            '''
+          }
+        }
+      }
+    }
+
+
+
+    // ---------- STAGE 6: Deploy ----------
+    stage('Deploy') {
+      // ✅ Deze when-blok bepaalt dat Deploy draait als:
+      //  - de huidige branch 'origin/main' is (klassieke Jenkins job)
+      //  - of als de PR gericht is naar 'main'
+      when {
+        anyOf {
+          expression { (env.GIT_BRANCH ?: '') == 'origin/main' }  // klassieke job
+          expression { (env.CHANGE_TARGET ?: '') == 'main' }      // multibranch PR
+        }
+      }
+
+      agent {
+        docker {
+          image 'node:18'
+          reuseNode true
+          args "-u ${JENKINS_UID}:${JENKINS_GID}"
+        }
+      }
+
       steps {
         withCredentials([string(credentialsId: 'netlify-token', variable: 'NETLIFY_AUTH_TOKEN')]) {
           sh '''
@@ -187,6 +179,7 @@ pipeline {
         }
       }
     }
+
 
 
     // ---------- STAGE 7: Branch Info ----------
