@@ -118,6 +118,14 @@ pipeline {
     }
     // ---------- STAGE 5: Netlify diagnostics ----------
     stage('Netlify diagnostics') {
+      agent {
+        docker {
+          image 'node:18'       // Debian-based, bevat bash + npx
+          reuseNode true
+          args "-u ${JENKINS_UID}:${JENKINS_GID}"  // voorkom root-owned files
+        }
+      }
+      environment { NETLIFY_LOG = 'debug' }  // extra logging van Netlify CLI
       steps {
         withCredentials([string(credentialsId: 'netlify-token', variable: 'NETLIFY_AUTH_TOKEN')]) {
           sh '''
