@@ -118,6 +118,13 @@ pipeline {
     }
     // ---------- STAGE 5: Netlify diagnostics ----------
     stage('Netlify diagnostics') {
+      // 🔹 Deze 'when' bepaalt of de Deploy-stage wordt uitgevoerd
+      when {
+        anyOf {
+          branch 'main'                               // Als de branch 'main' is
+          expression { env.CHANGE_TARGET == 'main' }  // Of als het een PR is naar 'main'
+        }
+      }
       agent {
         docker {
           image 'node:18'       // Debian-based, bevat bash + npx
@@ -130,11 +137,17 @@ pipeline {
         withCredentials([string(credentialsId: 'netlify-token', variable: 'NETLIFY_AUTH_TOKEN')]) {
           sh '''
             set -eux
-
+            npm install -g netlify-cli
             echo "Netlify CLI version:"
             npx --yes netlify --version
-
-            echo "Token present? (masked length):"
+              npx --yes netlify deploy \
+          --auth "$NETLIFY_AUTH_TOKEN" \
+          --site "$NETLIFY_PROJECT_ID" \
+          --dir build \
+          --prod \
+          --message "CI ${BUILD_NUMBER}"
+          '''
+            /* echo "Token present? (masked length):"
             [ -n "$NETLIFY_AUTH_TOKEN" ] && echo "NETLIFY_AUTH_TOKEN set (len=${#NETLIFY_AUTH_TOKEN})" || echo "MISSING TOKEN"
 
             echo "List sites available to this token (first 10 lines):"
@@ -144,8 +157,8 @@ pipeline {
             npx --yes netlify sites:list --json --auth "$NETLIFY_AUTH_TOKEN" | grep -n "\"id\": \"${NETLIFY_PROJECT_ID}\"" || true
 
             echo "Environment variables for the site (requires token + site):"
-            npx --yes netlify env:list --auth "$NETLIFY_AUTH_TOKEN" --site "$NETLIFY_PROJECT_ID" || true
-          '''
+            npx --yes netlify env:list --auth "$NETLIFY_AUTH_TOKEN" --site "$NETLIFY_PROJECT_ID" || true */
+          
         }
       }
     }
